@@ -172,6 +172,15 @@ async def auth_middleware(request, handler):
                 r'^/v1/setup_intents/\w+/cancel$',
             )))
 
+        # The browser may also read back an intent it holds the client secret
+        # of (Stripe.js retrievePaymentIntent / retrieveSetupIntent).
+        accept_key_in_query = (
+            request.method == 'GET' and
+            any(re.match(pattern, request.path) for pattern in (
+                r'^/v1/payment_intents/\w+$',
+                r'^/v1/setup_intents/\w+$',
+            )))
+
         is_auth = get_api_key(request) is not None
 
         if request.method == 'POST':
@@ -182,6 +191,12 @@ async def auth_middleware(request, handler):
         if not is_auth and accept_key_in_post_data:
             if ('key' in data and type(data['key']) is str and
                     data['key'].startswith('pk_')):
+                is_auth = True
+
+        if not is_auth and accept_key_in_query:
+            if (type(data.get('key')) is str and
+                    data['key'].startswith('pk_') and
+                    type(data.get('client_secret')) is str):
                 is_auth = True
 
     if not is_auth:
@@ -218,7 +233,15 @@ def api_retrieve(cls, url):
         id = request.match_info['id']
         data = unflatten_data(request.query)
         expand = data.pop('expand', None)
-        return json_response(cls._api_retrieve(id)._export(expand=expand))
+        data.pop('key', None)
+        client_secret = data.pop('client_secret', None)
+        obj = cls._api_retrieve(id)
+        # A publishable key only reads an intent with its client secret (see
+        # auth_middleware).
+        if (client_secret is not None and
+                getattr(obj, 'client_secret', None) != client_secret):
+            raise UserError(401, 'Unauthorized')
+        return json_response(obj._export(expand=expand))
     return f
 
 

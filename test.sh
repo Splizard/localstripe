@@ -696,6 +696,42 @@ code=$(
        -d payment_method=pm_card_visa_chargeDeclined)
 [ "$code" = 402 ]
 
+# intents can be read back with a publishable key and the client secret:
+code=$(
+  curl -sg -o /dev/null -w "%{http_code}" \
+       "$HOST/v1/setup_intents/$seti?key=pk_test_sldkjflaksdfj&client_secret=$seti_secret")
+[ "$code" = 200 ]
+
+# ... but not with another secret, or without the key:
+code=$(
+  curl -sg -o /dev/null -w "%{http_code}" \
+       "$HOST/v1/setup_intents/$seti?key=pk_test_sldkjflaksdfj&client_secret=${seti}_secret_wrong")
+[ "$code" = 401 ]
+code=$(
+  curl -sg -o /dev/null -w "%{http_code}" \
+       "$HOST/v1/setup_intents/$seti?client_secret=$seti_secret")
+[ "$code" = 401 ]
+
+# payment_intents/* can be updated before they are confirmed:
+pi=$(
+  curl -sSfg -u $SK: $HOST/v1/payment_intents \
+       -d amount=1000 \
+       -d currency=nzd \
+    | grep -oE 'pi_\w+' | head -n 1)
+res=$(
+  curl -sSfg -u $SK: $HOST/v1/payment_intents/$pi \
+       -d amount=1500 \
+       -d payment_method=pm_card_visa)
+echo "$res" | grep -q '"amount": 1500'
+echo "$res" | grep -q '"payment_method": "pm_card_visa"'
+
+# ... but only with fields they have:
+code=$(
+  curl -sg -o /dev/null -w "%{http_code}" \
+       -u $SK: $HOST/v1/payment_intents/$pi \
+       -d amount=-1)
+[ "$code" = 400 ]
+
 # off_session cannot be used when confirm is false
 code=$(
   curl -sg -o /dev/null -w "%{http_code}" \

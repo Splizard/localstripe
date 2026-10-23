@@ -1964,6 +1964,40 @@ class PaymentIntent(StripeObject):
         self._canceled = False
         self._authentication_failed = False
 
+    @classmethod
+    def _api_update(cls, id, amount=None, payment_method=None, metadata=None,
+                    **kwargs):
+        if kwargs:
+            raise UserError(400, 'Unexpected ' + ', '.join(kwargs.keys()))
+
+        amount = try_convert_to_int(amount)
+        try:
+            if amount is not None:
+                assert type(amount) is int and amount > 0
+            if payment_method is not None:
+                assert type(payment_method) is str
+                assert (payment_method.startswith('pm_') or
+                        payment_method.startswith('src_') or
+                        payment_method.startswith('card_'))
+        except AssertionError:
+            raise UserError(400, 'Bad request')
+
+        obj = cls._api_retrieve(id)
+        if obj.status not in ('requires_payment_method',
+                              'requires_confirmation', 'requires_action'):
+            raise UserError(400, 'Bad request')
+        if payment_method is not None:
+            PaymentMethod._api_retrieve(payment_method)  # 404 if not existant
+
+        # All exceptions must be raised before this point.
+        if amount is not None:
+            obj.amount = amount
+        if payment_method is not None:
+            obj.payment_method = payment_method
+        if metadata:
+            obj.metadata = {**(obj.metadata or {}), **metadata}
+        return obj
+
     def _on_success(self):
         schedule_webhook(Event('payment_intent.succeeded', self))
         if self.invoice:
