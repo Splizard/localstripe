@@ -15,6 +15,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+// Everything is scoped to this function, bar the Stripe global it replaces: a
+// top-level `class Element` would otherwise shadow the DOM's Element for every
+// script in the page (breaking, for example, `node instanceof Element`).
+(function () {
+'use strict';
+
 // First, get the URL base from which this script is pulled:
 const LOCALSTRIPE_BASE_API = (function () {
   const src = document.currentScript.src;
@@ -30,7 +36,7 @@ const LOCALSTRIPE_BASE_API = (function () {
   var iframes = document.getElementsByTagName('iframe');
 
   for (var i = 0; i < iframes.length; i++) {
-    if (iframes[i].getAttribute('name').startsWith('__privateStripeFrame')) {
+    if ((iframes[i].getAttribute('name') || '').startsWith('__privateStripeFrame')) {
       console.log('localstripe: Stripe seems to be already used in page ' +
                   '(found a <iframe name="' + iframes[i].getAttribute('name') +
                   '"> in document). For the mock service to work, you need to' +
@@ -294,7 +300,7 @@ async function retrieveIntent(resource, pattern, clientSecret, apiKey, name) {
   }
 }
 
-Stripe = (apiKey) => {
+window.Stripe = (apiKey) => {
   return {
     elements: () => {
       return {
@@ -544,3 +550,5 @@ Stripe = (apiKey) => {
 console.log('localstripe: The Stripe object was just replaced in the page. ' +
             'Stripe elements created from now on will be fake ones, ' +
             `communicating with the mock server at ${LOCALSTRIPE_BASE_API}.`);
+
+})();
