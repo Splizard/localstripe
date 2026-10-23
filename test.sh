@@ -696,6 +696,25 @@ code=$(
        -d payment_method=pm_card_visa_chargeDeclined)
 [ "$code" = 402 ]
 
+# confirming a customer's setup_intents sets the card up for that customer:
+setup_cus=$(curl -sSfg -u $SK: $HOST/v1/customers -d email=setup@example.com \
+      | grep -oE 'cus_\w+' | head -n 1)
+res=$(curl -sSfg -u $SK: $HOST/v1/setup_intents -d customer=$setup_cus)
+cseti=$(echo "$res" | grep '"id"' | grep -oE 'seti_\w+' | head -n 1)
+cseti_secret=$(echo $res | grep -oE 'seti_\w+_secret_\w+' | head -n 1)
+pm=$(
+  curl -sSfg $HOST/v1/setup_intents/$cseti/confirm \
+       -d key=pk_test_sldkjflaksdfj \
+       -d client_secret=$cseti_secret \
+       -d payment_method_data[type]=card \
+       -d payment_method_data[card][number]=4242424242424242 \
+       -d payment_method_data[card][exp_month]=12 \
+       -d payment_method_data[card][exp_year]=2034 \
+       -d payment_method_data[card][cvc]=123 \
+    | grep -oE '"payment_method": "pm_\w+"' | grep -oE 'pm_\w+')
+curl -sSfg -u $SK: $HOST/v1/payment_methods/$pm | grep -q "\"customer\": \"$setup_cus\""
+curl -sSfg -u $SK: -X DELETE $HOST/v1/customers/$setup_cus
+
 # intents can be read back with a publishable key and the client secret:
 code=$(
   curl -sg -o /dev/null -w "%{http_code}" \

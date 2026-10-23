@@ -2918,10 +2918,18 @@ class SetupIntent(StripeObject):
             # confirm. Stripe returns a 400 error in this case:
             raise UserError(400, 'Bad request')
         else:
-            obj.status = 'succeeded'
-            obj.next_action = None
+            obj._succeed()
 
         return obj
+
+    def _succeed(self):
+        # As with Stripe, the card is set up for the intent's customer.
+        if self.customer:
+            PaymentMethod._api_retrieve(self.payment_method).customer = \
+                self.customer
+        self.status = 'succeeded'
+        self.next_action = None
+        schedule_webhook(Event('setup_intent.succeeded', self))
 
     def _attach_pm(self, pm):
         self.payment_method = pm.id
@@ -2929,6 +2937,7 @@ class SetupIntent(StripeObject):
         if pm._attaching_is_declined():
             self.status = 'canceled'
             self.next_action = None
+            schedule_webhook(Event('setup_intent.setup_failed', self))
             raise UserError(402, 'Your card was declined.',
                             {'code': 'card_declined'})
         elif pm._requires_authentication():
@@ -2938,8 +2947,7 @@ class SetupIntent(StripeObject):
                                     'type': 'three_d_secure_redirect',
                                     'stripe_js': ''}}
         else:
-            self.status = 'succeeded'
-            self.next_action = None
+            self._succeed()
 
     @classmethod
     def _api_cancel(cls, id, use_stripe_sdk=None, client_secret=None,
@@ -2961,6 +2969,7 @@ class SetupIntent(StripeObject):
 
         obj.status = 'canceled'
         obj.next_action = None
+        schedule_webhook(Event('setup_intent.canceled', obj))
         return obj
 
 
