@@ -744,6 +744,14 @@ res=$(
 echo "$res" | grep -q '"amount": 1500'
 echo "$res" | grep -q '"payment_method": "pm_card_visa"'
 
+# payment_intents/* take a description, as Stripe's do:
+res=$(
+  curl -sSfg -u $SK: $HOST/v1/payment_intents \
+       -d amount=500 \
+       -d currency=eur \
+       -d description='A pair of socks')
+echo "$res" | grep -q '"description": "A pair of socks"'
+
 # ... but only with fields they have:
 code=$(
   curl -sg -o /dev/null -w "%{http_code}" \

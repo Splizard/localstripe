@@ -1918,7 +1918,8 @@ class PaymentIntent(StripeObject):
 
     def __init__(self, amount=None, currency=None, customer=None,
                  payment_method=None, metadata=None, payment_method_types=None,
-                 capture_method=None, payment_method_options=None, **kwargs):
+                 capture_method=None, payment_method_options=None,
+                 description=None, **kwargs):
         if kwargs:
             raise UserError(400, 'Unexpected ' + ', '.join(kwargs.keys()))
 
@@ -1927,6 +1928,8 @@ class PaymentIntent(StripeObject):
             # Invoices with amount == 0 don't create PaymentIntents:
             assert type(amount) is int and amount > 0
             assert type(currency) is str and currency
+            if description is not None:
+                assert type(description) is str
             if customer is not None:
                 assert type(customer) is str and customer.startswith('cus_')
             if payment_method is not None:
@@ -1952,6 +1955,7 @@ class PaymentIntent(StripeObject):
 
         self.amount = amount
         self.currency = currency
+        self.description = description
         self.latest_charge = None
         self.client_secret = self.id + '_secret_' + random_id(16)
         self.customer = customer
