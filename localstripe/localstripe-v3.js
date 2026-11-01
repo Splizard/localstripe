@@ -61,8 +61,11 @@ function openModal(text, confirmText, cancelText) {
     box.appendChild(p);
     box.appendChild(confirm);
     box.appendChild(cancel);
+    // Above the page, as Stripe's own 3D Secure challenge is: a page often
+    // covers itself with a loading overlay while it waits on the payment.
     Object.assign(box.style, {
-      position: 'absolute',
+      position: 'fixed',
+      'z-index': '2147483647',
       width: '300px',
       top: '50%',
       left: '50%',
