@@ -482,25 +482,72 @@ window.Stripe = (apiKey) => {
     confirmCardPayment: async (clientSecret, data) => {
       console.log('localstripe: Stripe().confirmCardPayment()');
       try {
-        const success = await openModal(
-          '3D Secure\nDo you want to confirm or cancel?',
-          'Complete authentication', 'Fail authentication');
         const pi = clientSecret.match(/^(pi_\w+)_secret_/)[1];
-        const url = `${LOCALSTRIPE_BASE_API}/v1/payment_intents/${pi}` +
-                    `/_authenticate?success=${success}`;
-        const response = await fetch(url, {
-          method: 'POST',
-          body: JSON.stringify({
-            key: apiKey,
-            client_secret: clientSecret,
-          }),
-        });
-        const body = await response.json().catch(() => ({}));
-        if (response.status !== 200 || body.error) {
-          return {error: body.error};
-        } else {
+        const post = async (path, body) => {
+          const response = await fetch(
+            `${LOCALSTRIPE_BASE_API}/v1/payment_intents/${pi}${path}`, {
+              method: 'POST',
+              body: JSON.stringify({
+                key: apiKey,
+                client_secret: clientSecret,
+                ...body,
+              }),
+            });
+          const res = await response.json().catch(() => ({}));
+          if (response.status !== 200 || res.error) {
+            throw {error: res.error};
+          }
+          return res;
+        };
+        // As Stripe.js does, confirm the intent with the card given (if any),
+        // then authenticate it with 3D Secure only when the card needs it.
+        const confirmation = {use_stripe_sdk: true};
+        const pm = (data || {}).payment_method;
+        if (typeof pm === 'string') {
+          confirmation.payment_method = pm;
+        } else if (pm) {
+          const method = {type: 'card', ...pm};
+          if (method.card instanceof Element) {
+            const value = cardOf(method.card);
+            method.card = value.card;
+            if (value.postal_code !== undefined) {
+              method.billing_details = method.billing_details || {};
+              method.billing_details.address =
+                method.billing_details.address || {};
+              method.billing_details.address.postal_code =
+                method.billing_details.address.postal_code ||
+                value.postal_code;
+            }
+          }
+          confirmation.payment_method_data = method;
+        }
+        let body = await retrieveIntent('payment_intents', /^(pi_\w+)_secret_/,
+                                        clientSecret, apiKey, 'paymentIntent');
+        if (body.error) {
+          return body;
+        }
+        body = body.paymentIntent;
+        // An intent the server already confirmed and charged is done.
+        if (!['succeeded', 'processing', 'requires_capture']
+            .includes(body.status)) {
+          body = await post('/confirm', confirmation);
+        }
+        if (body.status === 'requires_action') {
+          const success = await openModal(
+            '3D Secure\nDo you want to confirm or cancel?',
+            'Complete authentication', 'Fail authentication');
+          body = await post(`/_authenticate?success=${success}`, {});
+        }
+        if (['succeeded', 'processing', 'requires_capture']
+            .includes(body.status)) {
           return {paymentIntent: body};
         }
+        return {error: {
+          ...(body.last_payment_error || {}),
+          message: (body.last_payment_error || {}).message ||
+            `payment_intent has status ${body.status}`,
+          payment_intent: body,
+        }};
       } catch (err) {
         if (typeof err === 'object' && err.error) {
           return err;

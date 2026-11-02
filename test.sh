@@ -744,6 +744,24 @@ res=$(
 echo "$res" | grep -q '"amount": 1500'
 echo "$res" | grep -q '"payment_method": "pm_card_visa"'
 
+# Stripe.js confirms a PaymentIntent with the card it is given, by its
+# client secret and the publishable key:
+pi=$(curl -sSfg -u $SK: $HOST/v1/payment_intents \
+          -d amount=500 -d currency=eur)
+id=$(echo "$pi" | grep -oE 'pi_\w+' | head -n 1)
+secret=$(echo "$pi" | grep -oE 'pi_\w+_secret_\w+' | head -n 1)
+res=$(
+  curl -sSfg $HOST/v1/payment_intents/$id/confirm \
+       -d key=pk_test_sldkjflaksdfj \
+       -d client_secret=$secret \
+       -d use_stripe_sdk=true \
+       -d payment_method_data[type]=card \
+       -d payment_method_data[card][number]=4242424242424242 \
+       -d payment_method_data[card][exp_month]=12 \
+       -d payment_method_data[card][exp_year]=2030 \
+       -d payment_method_data[card][cvc]=123)
+echo "$res" | grep -q '"status": "succeeded"'
+
 # payment_intents/* take a description, as Stripe's do:
 res=$(
   curl -sSfg -u $SK: $HOST/v1/payment_intents \

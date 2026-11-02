@@ -2100,19 +2100,44 @@ class PaymentIntent(StripeObject):
         return obj
 
     @classmethod
-    def _api_confirm(cls, id, payment_method=None, **kwargs):
+    def _api_confirm(cls, id, use_stripe_sdk=None, client_secret=None,
+                     payment_method=None, payment_method_data=None, **kwargs):
         if kwargs:
             raise UserError(400, 'Unexpected ' + ', '.join(kwargs.keys()))
 
-        if payment_method is not None:
-            raise UserError(500, 'Not implemented')
-
         try:
             assert type(id) is str and id.startswith('pi_')
+            if client_secret is not None:
+                assert type(client_secret) is str
+            if payment_method is not None:
+                assert type(payment_method) is str
+            if payment_method_data is not None:
+                assert type(payment_method_data) is dict
         except AssertionError:
             raise UserError(400, 'Bad request')
 
         obj = cls._api_retrieve(id)
+
+        if client_secret and client_secret != obj.client_secret:
+            raise UserError(401, 'Unauthorized')
+
+        # Stripe.js's confirmCardPayment confirms with the card it is given
+        # (a PaymentMethod, or the card to make one of), in place of any the
+        # intent had: a declined or unauthenticated card is tried again.
+        if payment_method is not None or payment_method_data is not None:
+            if obj.status not in ('requires_payment_method',
+                                  'requires_confirmation', 'requires_action'):
+                raise UserError(400, 'Bad request')
+            if payment_method is not None:
+                pm = PaymentMethod._api_retrieve(payment_method)
+            else:
+                pm = PaymentMethod(**payment_method_data)
+            obj.payment_method = pm.id
+            obj.next_action = None
+            obj.latest_charge = None
+        elif obj.status == 'requires_action' and use_stripe_sdk:
+            # Stripe.js goes on to the 3D Secure the intent waits for.
+            return obj
 
         if obj.status != 'requires_confirmation':
             raise UserError(400, 'Bad request')
